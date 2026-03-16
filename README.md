@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/tt-logo.svg" alt="tt logo" width="640">
+</p>
+
 # `tt`
 
 Local CLI time tracking for work hours, breaks, CSV export, manual editing, and a zsh prompt segment.
