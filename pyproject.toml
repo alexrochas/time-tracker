@@ -1,0 +1,18 @@
+[build-system]
+requires = []
+build-backend = "tt_backend"
+backend-path = ["backend"]
+
+[project]
+name = "time-tracker-tt"
+version = "0.1.0"
+description = "A local CLI time tracker for work hours."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Alex Rocha" }
+]
+dependencies = []
+
+[project.scripts]
+tt = "tt_tracker.cli:main"
