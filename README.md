@@ -43,6 +43,7 @@ If `tt` is not found after install, the script prints the exact `PATH` line you 
 - `tt continue 1h` says the break should only have lasted one hour
 - `tt stop` ends the current workday
 - `tt config set target 8h` sets your daily target
+- `tt config set editor vim` sets a custom edit command
 - `tt prompt` prints a compact prompt segment like `[3h17m left]`
 - `tt install-prompt zsh` installs a managed left-side prompt hook
 - `tt export` writes CSV summaries
@@ -54,6 +55,7 @@ Set your daily target once:
 
 ```bash
 tt config set target 8h
+tt config set editor vim
 ```
 
 Then use it through the day:
@@ -127,6 +129,8 @@ tt status 16.03
 tt config show
 tt config set target 8h
 tt config set target 7h30m
+tt config set editor vim
+tt config set editor 'nvim +10 $'
 ```
 
 ### Export
@@ -159,6 +163,16 @@ tt edit 16.03
 ```
 
 This is useful when you forgot something more complicated and want to fix the event history directly.
+
+By default, `tt edit` first respects `VISUAL` or `EDITOR`, then falls back to the current platform default behavior. You can override that with a configured command:
+
+```bash
+tt config set editor vim
+tt config set editor 'nvim +10 $'
+tt config set editor 'code --wait {file}'
+```
+
+If the configured command contains `$` or `{file}`, `tt` replaces that token with the day file path. If there is no placeholder, `tt` appends the file path automatically. When using `$`, quote it so your shell does not try to expand it first.
 
 ## Prompt integration
 

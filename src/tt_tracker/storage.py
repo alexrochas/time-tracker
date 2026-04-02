@@ -57,11 +57,11 @@ class TrackerStore:
         path.write_text(json.dumps(record.to_dict(), indent=2) + "\n")
         return path
 
-    def load_config(self) -> dict[str, int]:
+    def load_config(self) -> dict[str, object]:
         self.ensure()
         return json.loads(self.config_path.read_text())
 
-    def save_config(self, payload: dict[str, int]) -> None:
+    def save_config(self, payload: dict[str, object]) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.config_path.write_text(json.dumps(payload, indent=2) + "\n")
 

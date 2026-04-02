@@ -61,8 +61,8 @@ def build_parser() -> argparse.ArgumentParser:
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
     config_subparsers.add_parser("show", help="Show the current configuration.")
     config_set_parser = config_subparsers.add_parser("set", help="Set a configuration value.")
-    config_set_parser.add_argument("key", choices=["target"], help="Configuration key.")
-    config_set_parser.add_argument("value", help="Value for the key, such as 8h.")
+    config_set_parser.add_argument("key", choices=["target", "editor"], help="Configuration key.")
+    config_set_parser.add_argument("value", nargs="+", help="Value for the key, such as 8h or vim.")
 
     prompt_parser = subparsers.add_parser("prompt", help="Print a prompt segment.")
     prompt_parser.add_argument("--plain", action="store_true", help="Disable ANSI colors.")
@@ -145,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "edit":
             day = parse_day(args.day, now.date()) if args.day else tracker.current_day(now)
             path = tracker.ensure_day_file(day)
-            open_editor(Path(path))
+            open_editor(Path(path), tracker.current_editor_command())
             print(f"Opened {path}.")
             return 0
 
@@ -153,11 +153,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.config_command == "show":
                 target = tracker.current_target()
                 print(f"target={format_duration(target)}")
+                print(f"editor={tracker.current_editor_command() or ''}")
                 print(f"store={tracker.store.root}")
                 return 0
             if args.config_command == "set":
-                target = tracker.config_target(parse_duration(args.value))
-                print(f"Updated target to {format_duration(target)}.")
+                value = " ".join(args.value)
+                if args.key == "target":
+                    target = tracker.config_target(parse_duration(value))
+                    print(f"Updated target to {format_duration(target)}.")
+                    return 0
+                if args.key == "editor":
+                    command = tracker.config_editor_command(value)
+                    print(f"Updated editor to {command}.")
                 return 0
 
         if args.command == "prompt":
@@ -372,7 +379,10 @@ def rounded_minutes(duration: timedelta) -> int:
     return int(round(duration.total_seconds() / 60))
 
 
-def open_editor(path: Path) -> None:
+def open_editor(path: Path, configured_command: str | None = None) -> None:
+    if configured_command:
+        subprocess.run(build_editor_command(configured_command, path), check=True)
+        return
     editor = os.environ.get("VISUAL") or os.environ.get("EDITOR")
     if editor:
         subprocess.run([*shlex.split(editor), str(path)], check=True)
@@ -381,6 +391,15 @@ def open_editor(path: Path) -> None:
         subprocess.run(["open", "-t", str(path)], check=True)
         return
     subprocess.run(["vi", str(path)], check=True)
+
+
+def build_editor_command(command: str, path: Path) -> list[str]:
+    parts = shlex.split(command)
+    replacements = {"$", "{file}"}
+    substituted = [str(path) if part in replacements else part for part in parts]
+    if not any(part in replacements for part in parts):
+        substituted.append(str(path))
+    return substituted
 
 
 def install_prompt(rc_path: Path, shell: str) -> None:

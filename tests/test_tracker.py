@@ -8,13 +8,16 @@ import unittest
 from contextlib import redirect_stdout
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from tt_tracker.cli import (
+    build_editor_command,
     build_zsh_prompt_block,
     format_prompt,
     main,
+    open_editor,
     parse_clock_time,
     parse_day,
     parse_duration,
@@ -88,6 +91,31 @@ class TrackerTests(unittest.TestCase):
         with self.assertRaises(TrackerError):
             self.tracker.start(self.dt(16, 8, 30))
 
+    def test_editor_config_is_preserved_when_target_changes(self) -> None:
+        self.tracker.config_editor_command("vim $")
+
+        target = self.tracker.config_target(timedelta(hours=7, minutes=30))
+
+        self.assertEqual(target, timedelta(hours=7, minutes=30))
+        self.assertEqual(self.tracker.current_editor_command(), "vim $")
+        self.assertEqual(self.store.load_config()["target_minutes"], 450)
+
+    def test_build_editor_command_replaces_placeholder(self) -> None:
+        command = build_editor_command('vim -c "set number" $', Path("/tmp/day file.json"))
+
+        self.assertEqual(command, ["vim", "-c", "set number", "/tmp/day file.json"])
+
+    def test_build_editor_command_appends_path_without_placeholder(self) -> None:
+        command = build_editor_command("vim -u NONE", Path("/tmp/day file.json"))
+
+        self.assertEqual(command, ["vim", "-u", "NONE", "/tmp/day file.json"])
+
+    def test_open_editor_prefers_configured_command(self) -> None:
+        with patch("tt_tracker.cli.subprocess.run") as run_mock:
+            open_editor(Path("/tmp/day.json"), "vim $")
+
+        run_mock.assert_called_once_with(["vim", "/tmp/day.json"], check=True)
+
     def test_main_without_command_prints_status(self) -> None:
         os_env = __import__("os").environ
         previous = os_env.get("TT_HOME")
@@ -104,6 +132,24 @@ class TrackerTests(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertIn("State: idle", output.getvalue())
+
+    def test_main_config_set_editor(self) -> None:
+        os_env = __import__("os").environ
+        previous = os_env.get("TT_HOME")
+        os_env["TT_HOME"] = self.temp_dir.name
+        try:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["config", "set", "editor", "vim", "$"])
+        finally:
+            if previous is None:
+                os_env.pop("TT_HOME", None)
+            else:
+                os_env["TT_HOME"] = previous
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(self.tracker.current_editor_command(), "vim $")
+        self.assertIn("Updated editor to vim $.", output.getvalue())
 
     def test_prompt_text_does_not_include_tt_label(self) -> None:
         summary = DaySummary(

@@ -11,6 +11,9 @@ class TrackerError(RuntimeError):
     """Raised when a command cannot be completed."""
 
 
+EDITOR_COMMAND_KEY = "editor_command"
+
+
 @dataclass(slots=True)
 class Tracker:
     store: TrackerStore
@@ -21,8 +24,26 @@ class Tracker:
 
     def config_target(self, duration: timedelta) -> timedelta:
         minutes = int(duration.total_seconds() // 60)
-        self.store.save_config({"target_minutes": minutes})
+        config = self.store.load_config()
+        config["target_minutes"] = minutes
+        self.store.save_config(config)
         return timedelta(minutes=minutes)
+
+    def current_editor_command(self) -> str | None:
+        command = self.store.load_config().get(EDITOR_COMMAND_KEY)
+        if not isinstance(command, str):
+            return None
+        command = command.strip()
+        return command or None
+
+    def config_editor_command(self, command: str) -> str:
+        normalized = command.strip()
+        if not normalized:
+            raise ValueError("Editor command cannot be empty.")
+        config = self.store.load_config()
+        config[EDITOR_COMMAND_KEY] = normalized
+        self.store.save_config(config)
+        return normalized
 
     def current_day(self, reference: datetime) -> date:
         state = self.store.load_state()
