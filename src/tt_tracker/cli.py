@@ -10,7 +10,7 @@ import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from .model import WorkState
+from .model import DayRecord, WorkState, calculate_summary
 from .storage import TrackerStore
 from .tracker import Tracker, TrackerError
 
@@ -49,10 +49,29 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Show the current status or a single day summary.")
     status_parser.add_argument("day", nargs="?", help="Optional day, such as 2026-03-16 or 16.03.")
 
-    export_parser = subparsers.add_parser("export", help="Export one or more days to CSV.")
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Show one or more days as a timeline, or export them as CSV.",
+    )
     export_parser.add_argument("from_day", nargs="?", help="Start day, such as 01.03 or 2026-03-01.")
     export_parser.add_argument("to_day", nargs="?", help="End day. Defaults to the same value as from_day.")
-    export_parser.add_argument("-o", "--output", help="Write CSV to a file instead of stdout.")
+    format_group = export_parser.add_mutually_exclusive_group()
+    format_group.add_argument(
+        "--csv",
+        action="store_const",
+        dest="format",
+        const="csv",
+        help="Write CSV instead of the default timeline view.",
+    )
+    format_group.add_argument(
+        "--timeline",
+        action="store_const",
+        dest="format",
+        const="timeline",
+        help="Write the day-by-day timeline view.",
+    )
+    export_parser.set_defaults(format="timeline")
+    export_parser.add_argument("-o", "--output", help="Write the selected format to a file instead of stdout.")
 
     edit_parser = subparsers.add_parser("edit", help="Open a day file in your editor.")
     edit_parser.add_argument("day", nargs="?", help="Optional day. Defaults to the open day or today.")
@@ -139,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "export":
             from_day = parse_day(args.from_day, now.date()) if args.from_day else now.date()
             to_day = parse_day(args.to_day, from_day) if args.to_day else from_day
-            export_csv(tracker, from_day, to_day, now, args.output)
+            export_report(tracker, from_day, to_day, now, args.output, args.format)
             return 0
 
         if args.command == "edit":
@@ -224,6 +243,22 @@ def format_prompt(summary, color: bool) -> str:
     return paint(text, RED, color)
 
 
+def export_report(
+    tracker: Tracker,
+    from_day: date,
+    to_day: date,
+    reference: datetime,
+    output_path: str | None,
+    output_format: str,
+) -> None:
+    if to_day < from_day:
+        raise ValueError("The export end day must be on or after the start day.")
+    if output_format == "csv":
+        export_csv(tracker, from_day, to_day, reference, output_path)
+        return
+    export_timeline(tracker, from_day, to_day, reference, output_path)
+
+
 def export_csv(
     tracker: Tracker,
     from_day: date,
@@ -231,8 +266,6 @@ def export_csv(
     reference: datetime,
     output_path: str | None,
 ) -> None:
-    if to_day < from_day:
-        raise ValueError("The export end day must be on or after the start day.")
     target = tracker.current_target()
     rows = []
     current = from_day
@@ -277,6 +310,111 @@ def export_csv(
     finally:
         if should_close:
             handle.close()
+
+
+def export_timeline(
+    tracker: Tracker,
+    from_day: date,
+    to_day: date,
+    reference: datetime,
+    output_path: str | None,
+) -> None:
+    target = tracker.current_target()
+    handle = open(output_path, "w") if output_path else sys.stdout
+    should_close = output_path is not None
+    current = from_day
+    try:
+        first_day = True
+        while current <= to_day:
+            if not first_day:
+                print(file=handle)
+            first_day = False
+            record = tracker.store.load_day(current)
+            changed = tracker.auto_resume_if_due(record, reference)
+            if changed:
+                tracker.store.save_day(record)
+            summary = calculate_summary(record, reference, target)
+            print(f"{current.isoformat()} | {summary.state.value}", file=handle)
+            segments = build_timeline_segments(record, reference)
+            if segments:
+                for label, start_at, end_at, duration in segments:
+                    print(
+                        f"  {format_clock(start_at)} -> {format_clock(end_at)}  {label:<5}  {format_duration(duration)}",
+                        file=handle,
+                    )
+            else:
+                print("  no entries", file=handle)
+            print(
+                "  total: "
+                f"worked {format_duration(summary.worked)} | "
+                f"paused {format_duration(summary.paused)} | "
+                f"target {format_duration(summary.target)} | "
+                f"{format_balance(summary.balance)}",
+                file=handle,
+            )
+            current += timedelta(days=1)
+    finally:
+        if should_close:
+            handle.close()
+
+
+def build_timeline_segments(
+    record: DayRecord,
+    reference: datetime,
+) -> list[tuple[str, datetime, datetime, timedelta]]:
+    segments: list[tuple[str, datetime, datetime, timedelta]] = []
+    state = WorkState.IDLE
+    work_started_at: datetime | None = None
+    pause_started_at: datetime | None = None
+
+    for event in record.sorted_events():
+        if event.type == "start":
+            if state in {WorkState.IDLE, WorkState.STOPPED}:
+                state = WorkState.WORKING
+                work_started_at = event.at
+        elif event.type == "pause":
+            if state == WorkState.WORKING and work_started_at is not None:
+                segments.append(("work", work_started_at, event.at, safe_timeline_delta(work_started_at, event.at)))
+                work_started_at = None
+                pause_started_at = event.at
+                state = WorkState.PAUSED
+        elif event.type == "continue":
+            if state == WorkState.PAUSED and pause_started_at is not None:
+                segments.append(
+                    ("break", pause_started_at, event.at, safe_timeline_delta(pause_started_at, event.at))
+                )
+                pause_started_at = None
+                work_started_at = event.at
+                state = WorkState.WORKING
+        elif event.type == "stop":
+            if state == WorkState.WORKING and work_started_at is not None:
+                segments.append(("work", work_started_at, event.at, safe_timeline_delta(work_started_at, event.at)))
+            elif state == WorkState.PAUSED and pause_started_at is not None:
+                segments.append(
+                    ("break", pause_started_at, event.at, safe_timeline_delta(pause_started_at, event.at))
+                )
+            state = WorkState.STOPPED
+            work_started_at = None
+            pause_started_at = None
+
+    if state == WorkState.WORKING and work_started_at is not None:
+        segments.append(("work", work_started_at, reference, safe_timeline_delta(work_started_at, reference)))
+    elif state == WorkState.PAUSED and pause_started_at is not None:
+        segments.append(("break", pause_started_at, reference, safe_timeline_delta(pause_started_at, reference)))
+
+    return segments
+
+
+def safe_timeline_delta(start: datetime, end: datetime) -> timedelta:
+    if end < start:
+        return timedelta()
+    return end - start
+
+
+def format_balance(balance: timedelta) -> str:
+    if balance >= timedelta():
+        return f"remaining {format_duration(balance)}"
+    return f"overtime {format_duration(abs(balance))}"
 
 
 def parse_day(value: str, default_day: date) -> date:

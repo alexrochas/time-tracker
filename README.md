@@ -4,7 +4,7 @@
 
 # `tt`
 
-Local CLI time tracking for work hours, breaks, CSV export, manual editing, and a zsh prompt segment.
+Local CLI time tracking for work hours, breaks, readable timeline exports, CSV export, manual editing, and a zsh prompt segment.
 
 `tt` is meant for a simple personal workflow:
 - start the workday
@@ -46,7 +46,8 @@ If `tt` is not found after install, the script prints the exact `PATH` line you 
 - `tt config set editor vim` sets a custom edit command
 - `tt prompt` prints a compact prompt segment like `[3h17m left]`
 - `tt install-prompt zsh` installs a managed left-side prompt hook
-- `tt export` writes CSV summaries
+- `tt export` shows a readable day-by-day timeline
+- `tt export --csv` writes CSV summaries
 - `tt edit` opens the underlying day file in your editor
 
 ## Quick start
@@ -135,17 +136,25 @@ tt config set editor 'nvim +10 $'
 
 ### Export
 
-Export a single day:
+Show a single day as a timeline:
 
 ```bash
-tt export 16.03 -o hours.csv
+tt export 16.03
 ```
 
-Export a range:
+Show a range:
 
 ```bash
-tt export 01.03 16.03 -o march.csv
-tt export 01/03 16/03 -o march.csv
+tt export 01.03 16.03
+tt export 01/03 16/03
+```
+
+Write CSV when you want a spreadsheet-friendly export:
+
+```bash
+tt export 16.03 --csv -o hours.csv
+tt export 01.03 16.03 --csv -o march.csv
+tt export 01/03 16/03 --csv -o march.csv
 ```
 
 ### Manual correction

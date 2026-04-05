@@ -151,6 +151,55 @@ class TrackerTests(unittest.TestCase):
         self.assertEqual(self.tracker.current_editor_command(), "vim $")
         self.assertIn("Updated editor to vim $.", output.getvalue())
 
+    def test_main_export_defaults_to_timeline(self) -> None:
+        self.tracker.start(self.dt(16, 8, 30))
+        self.tracker.pause(self.dt(16, 12, 0))
+        self.tracker.resume(self.dt(16, 12, 45))
+        self.tracker.stop(self.dt(16, 17, 15))
+
+        os_env = __import__("os").environ
+        previous = os_env.get("TT_HOME")
+        os_env["TT_HOME"] = self.temp_dir.name
+        try:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["export", "16.03"])
+        finally:
+            if previous is None:
+                os_env.pop("TT_HOME", None)
+            else:
+                os_env["TT_HOME"] = previous
+
+        rendered = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("2026-03-16 | stopped", rendered)
+        self.assertIn("work   3h30m", rendered)
+        self.assertIn("break  0h45m", rendered)
+        self.assertIn("work   4h30m", rendered)
+        self.assertIn("total: worked 8h00m | paused 0h45m", rendered)
+
+    def test_main_export_csv_requires_flag(self) -> None:
+        self.tracker.start(self.dt(16, 8, 30))
+        self.tracker.stop(self.dt(16, 16, 30))
+
+        os_env = __import__("os").environ
+        previous = os_env.get("TT_HOME")
+        os_env["TT_HOME"] = self.temp_dir.name
+        try:
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(["export", "16.03", "--csv"])
+        finally:
+            if previous is None:
+                os_env.pop("TT_HOME", None)
+            else:
+                os_env["TT_HOME"] = previous
+
+        rendered = output.getvalue()
+        self.assertEqual(exit_code, 0)
+        self.assertIn("date,worked_minutes,worked_hhmm", rendered)
+        self.assertIn("2026-03-16,480,8h00m", rendered)
+
     def test_prompt_text_does_not_include_tt_label(self) -> None:
         summary = DaySummary(
             day=self.dt(16, 9, 0).date(),
