@@ -31,7 +31,7 @@ def build_parser() -> argparse.ArgumentParser:
     start_parser.add_argument(
         "start_time",
         nargs="?",
-        help="Optional start time for today in HH:mm format, for example 08:30.",
+        help="Optional start time: HH:mm / HHhmm (e.g. 08:30, 15h30), or relative offset (+30, -30).",
     )
 
     pause_parser = subparsers.add_parser("pause", help="Pause the current workday.")
@@ -44,7 +44,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional actual pause duration, for example 1h if you forgot to continue on time.",
     )
 
-    subparsers.add_parser("stop", help="Stop the current workday.")
+    stop_parser = subparsers.add_parser("stop", help="Stop the current workday.")
+    stop_parser.add_argument(
+        "stop_time",
+        nargs="?",
+        help="Optional stop time: HH:mm / HHhmm (e.g. 17:30, 17h30), or relative offset (+30, -30).",
+    )
 
     status_parser = subparsers.add_parser("status", help="Show the current status or a single day summary.")
     status_parser.add_argument("day", nargs="?", help="Optional day, such as 2026-03-16 or 16.03.")
@@ -120,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "start":
-            start_at = parse_clock_time(args.start_time, now) if args.start_time else now
+            start_at = parse_time_argument(args.start_time, now) if args.start_time else now
             tracker.start(start_at)
             summary = tracker.summary_for_day(start_at.date(), now)
             print(f"Started {start_at.date().isoformat()} at {format_clock(start_at)}.")
@@ -144,8 +149,9 @@ def main(argv: list[str] | None = None) -> int:
             return 0
 
         if args.command == "stop":
-            summary = tracker.stop(now)
-            print(f"Stopped at {format_clock(now)}.")
+            stop_at = parse_time_argument(args.stop_time, now) if args.stop_time else now
+            summary = tracker.stop(stop_at)
+            print(f"Stopped at {format_clock(stop_at)}.")
             print(format_status(summary))
             return 0
 
@@ -493,6 +499,28 @@ def parse_clock_time(value: str, reference: datetime) -> datetime:
     if candidate > reference:
         raise ValueError("Start time cannot be in the future.")
     return candidate
+
+
+def parse_time_argument(value: str, reference: datetime) -> datetime:
+    value = value.strip()
+    
+    if value.startswith(("+", "-")):
+        sign = 1 if value[0] == "+" else -1
+        try:
+            minutes = int(value[1:])
+        except ValueError:
+            raise ValueError(f"Invalid offset format: {value}. Use +N or -N where N is minutes.")
+        return reference + timedelta(minutes=sign * minutes)
+    
+    if "h" in value.lower():
+        value = value.lower().replace("h", ":")
+    
+    try:
+        parsed = datetime.strptime(value, "%H:%M").time()
+    except ValueError as exc:
+        raise ValueError("Time must use HH:mm or HHhmm, for example 08:30 or 15h30.") from exc
+    
+    return datetime.combine(reference.date(), parsed, tzinfo=reference.tzinfo)
 
 
 def format_duration(duration: timedelta) -> str:

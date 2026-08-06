@@ -21,6 +21,7 @@ from tt_tracker.cli import (
     parse_clock_time,
     parse_day,
     parse_duration,
+    parse_time_argument,
     replace_managed_block,
 )
 from tt_tracker.model import DaySummary, WorkState
@@ -77,6 +78,18 @@ class TrackerTests(unittest.TestCase):
     def test_parse_clock_time_uses_today(self) -> None:
         reference = self.dt(16, 10, 0)
         self.assertEqual(parse_clock_time("08:30", reference), self.dt(16, 8, 30))
+
+    def test_parse_time_argument_handles_relative_offsets(self) -> None:
+        reference = self.dt(16, 10, 0)
+        self.assertEqual(parse_time_argument("+30", reference), self.dt(16, 10, 30))
+        self.assertEqual(parse_time_argument("-30", reference), self.dt(16, 9, 30))
+        self.assertEqual(parse_time_argument("+90", reference), self.dt(16, 11, 30))
+
+    def test_parse_time_argument_handles_absolute_time_formats(self) -> None:
+        reference = self.dt(16, 10, 0)
+        self.assertEqual(parse_time_argument("08:30", reference), self.dt(16, 8, 30))
+        self.assertEqual(parse_time_argument("15h30", reference), self.dt(16, 15, 30))
+        self.assertEqual(parse_time_argument("15H30", reference), self.dt(16, 15, 30))
 
     def test_backdated_start_counts_work_since_that_time(self) -> None:
         summary = self.tracker.start(self.dt(16, 8, 30))
