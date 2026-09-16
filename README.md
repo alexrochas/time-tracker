@@ -206,6 +206,12 @@ Remove it with:
 tt uninstall-prompt zsh
 ```
 
+## Extensions - how to add to your Mac topbar
+
+Want remaining time in the macOS menu bar instead of (or in addition to) the
+prompt segment? See [`docs/menubar.md`](docs/menubar.md) — a standalone
+xbar/SwiftBar plugin script, no changes to this repo needed.
+
 ## Data storage
 
 `tt` stores data in `~/.tt` by default.
