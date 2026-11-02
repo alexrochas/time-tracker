@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
-from .model import DayRecord, DaySummary, Event, WorkState, calculate_summary
-from .storage import DEFAULT_TARGET_MINUTES, TrackerStore
+from .model import DayRecord, DaySummary, Event, WeekSummary, WorkState, calculate_summary
+from .storage import DEFAULT_TARGET_MINUTES, DEFAULT_WEEKLY_TARGET_MINUTES, TrackerStore
 
 
 class TrackerError(RuntimeError):
@@ -26,6 +26,17 @@ class Tracker:
         minutes = int(duration.total_seconds() // 60)
         config = self.store.load_config()
         config["target_minutes"] = minutes
+        self.store.save_config(config)
+        return timedelta(minutes=minutes)
+
+    def current_weekly_target(self) -> timedelta:
+        config = self.store.load_config()
+        return timedelta(minutes=config.get("weekly_target_minutes", DEFAULT_WEEKLY_TARGET_MINUTES))
+
+    def config_weekly_target(self, duration: timedelta) -> timedelta:
+        minutes = int(duration.total_seconds() // 60)
+        config = self.store.load_config()
+        config["weekly_target_minutes"] = minutes
         self.store.save_config(config)
         return timedelta(minutes=minutes)
 
@@ -133,6 +144,23 @@ class Tracker:
         if changed:
             self.store.save_day(record)
         return calculate_summary(record, reference, self.current_target())
+
+    def summary_for_week(self, day: date, reference: datetime) -> WeekSummary:
+        week_start = day - timedelta(days=day.weekday())
+        week_end = week_start + timedelta(days=6)
+        worked = timedelta()
+        current = week_start
+        while current <= week_end:
+            worked += self.summary_for_day(current, reference).worked
+            current += timedelta(days=1)
+        target = self.current_weekly_target()
+        return WeekSummary(
+            week_start=week_start,
+            week_end=week_end,
+            worked=worked,
+            target=target,
+            balance=target - worked,
+        )
 
     def ensure_day_file(self, day: date) -> str:
         record = self.store.load_day(day)

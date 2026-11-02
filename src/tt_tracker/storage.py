@@ -9,6 +9,7 @@ from .model import DayRecord
 
 
 DEFAULT_TARGET_MINUTES = 8 * 60
+DEFAULT_WEEKLY_TARGET_MINUTES = DEFAULT_TARGET_MINUTES * 5
 
 
 @dataclass(slots=True)

@@ -54,6 +54,9 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Show the current status or a single day summary.")
     status_parser.add_argument("day", nargs="?", help="Optional day, such as 2026-03-16 or 16.03.")
 
+    week_parser = subparsers.add_parser("week", help="Show worked hours for the week (Mon-Sun) of a given day.")
+    week_parser.add_argument("day", nargs="?", help="Optional day within the week. Defaults to today.")
+
     export_parser = subparsers.add_parser(
         "export",
         help="Show one or more days as a timeline, or export them as CSV.",
@@ -85,7 +88,7 @@ def build_parser() -> argparse.ArgumentParser:
     config_subparsers = config_parser.add_subparsers(dest="config_command", required=True)
     config_subparsers.add_parser("show", help="Show the current configuration.")
     config_set_parser = config_subparsers.add_parser("set", help="Set a configuration value.")
-    config_set_parser.add_argument("key", choices=["target", "editor"], help="Configuration key.")
+    config_set_parser.add_argument("key", choices=["target", "weekly-target", "editor"], help="Configuration key.")
     config_set_parser.add_argument("value", nargs="+", help="Value for the key, such as 8h or vim.")
 
     prompt_parser = subparsers.add_parser("prompt", help="Print a prompt segment.")
@@ -161,6 +164,12 @@ def main(argv: list[str] | None = None) -> int:
             print(format_status(summary))
             return 0
 
+        if args.command == "week":
+            day = parse_day(args.day, now.date()) if args.day else now.date()
+            week_summary = tracker.summary_for_week(day, now)
+            print(format_week(week_summary))
+            return 0
+
         if args.command == "export":
             from_day = parse_day(args.from_day, now.date()) if args.from_day else now.date()
             to_day = parse_day(args.to_day, from_day) if args.to_day else from_day
@@ -177,7 +186,9 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "config":
             if args.config_command == "show":
                 target = tracker.current_target()
+                weekly_target = tracker.current_weekly_target()
                 print(f"target={format_duration(target)}")
+                print(f"weekly-target={format_duration(weekly_target)}")
                 print(f"editor={tracker.current_editor_command() or ''}")
                 print(f"store={tracker.store.root}")
                 return 0
@@ -186,6 +197,10 @@ def main(argv: list[str] | None = None) -> int:
                 if args.key == "target":
                     target = tracker.config_target(parse_duration(value))
                     print(f"Updated target to {format_duration(target)}.")
+                    return 0
+                if args.key == "weekly-target":
+                    weekly_target = tracker.config_weekly_target(parse_duration(value))
+                    print(f"Updated weekly target to {format_duration(weekly_target)}.")
                     return 0
                 if args.key == "editor":
                     command = tracker.config_editor_command(value)
@@ -227,6 +242,17 @@ def format_status(summary) -> str:
         parts.append(f"Stopped: {format_clock(summary.stopped_at)}")
     parts.append(f"Worked: {format_duration(summary.worked)}")
     parts.append(f"Paused: {format_duration(summary.paused)}")
+    parts.append(f"Target: {format_duration(summary.target)}")
+    if summary.balance >= timedelta():
+        parts.append(f"Remaining: {format_duration(summary.balance)}")
+    else:
+        parts.append(f"Overtime: {format_duration(abs(summary.balance))}")
+    return " | ".join(parts)
+
+
+def format_week(summary) -> str:
+    parts = [f"Week: {summary.week_start.isoformat()} to {summary.week_end.isoformat()}"]
+    parts.append(f"Worked: {format_duration(summary.worked)}")
     parts.append(f"Target: {format_duration(summary.target)}")
     if summary.balance >= timedelta():
         parts.append(f"Remaining: {format_duration(summary.balance)}")

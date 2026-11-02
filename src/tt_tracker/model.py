@@ -141,6 +141,15 @@ def calculate_summary(
     )
 
 
+@dataclass(slots=True)
+class WeekSummary:
+    week_start: date
+    week_end: date
+    worked: timedelta
+    target: timedelta
+    balance: timedelta
+
+
 def safe_delta(start: datetime, end: datetime) -> timedelta:
     if end < start:
         return timedelta()
