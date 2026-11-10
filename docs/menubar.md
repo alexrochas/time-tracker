@@ -11,51 +11,21 @@ Recommended host: [xbar](https://xbarapp.com) or [SwiftBar](https://swiftbar.app
 brew install --cask xbar   # or: brew install --cask swiftbar
 ```
 
-## Plugin script
+## Plugin scripts
 
-Save this anywhere outside this repo, e.g. `~/bin/tt.5s.sh`:
+The plugins live in [`xbar/`](../xbar):
 
-```sh
-#!/bin/sh
-# xbar/SwiftBar plugin — shows `tt`'s remaining/overtime prompt in the macOS menu bar.
-# Install: copy this file to your xbar/SwiftBar plugins folder, e.g.
-#   cp tt.5s.sh ~/Library/Application\ Support/xbar/plugins/tt.5s.sh
-#   chmod +x ~/Library/Application\ Support/xbar/plugins/tt.5s.sh
-# The "5s" in the filename sets the refresh interval; rename to change it (e.g. tt.30s.sh).
-
-export PATH="$HOME/Library/Python/3.14/bin:$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
-
-if ! command -v tt >/dev/null 2>&1; then
-  echo "tt: not found on PATH | color=red"
-  exit 0
-fi
-
-raw=$(tt prompt 2>/dev/null)
-
-# strip ANSI escape codes, keep the plain text
-text=$(printf '%s' "$raw" | sed -E 's/\x1B\[[0-9;]*m//g')
-
-if [ -z "$text" ]; then
-  echo "tt: idle"
-  exit 0
-fi
-
-# color green unless it's overtime (starts with '+')
-case "$text" in
-  \[+*) color=red ;;
-  *) color=green ;;
-esac
-
-echo "$text | color=$color"
-```
+- `tt.5s.sh`: `tt prompt` (remaining/overtime today), refreshes every 5s.
+- `tt-week.1m.sh`: only the remaining hours of `tt week` (e.g. `34h32m left`), refreshes every minute.
 
 ## Install it
 
 ```bash
-mkdir -p ~/Library/Application\ Support/xbar/plugins
-cp ~/bin/tt.5s.sh ~/Library/Application\ Support/xbar/plugins/tt.5s.sh
-chmod +x ~/Library/Application\ Support/xbar/plugins/tt.5s.sh
+./xbar/install.sh
 ```
+
+This symlinks the scripts into `~/Library/Application Support/xbar/plugins`, so
+editing them in the repo is what xbar runs.
 
 The number in the filename (`tt.5s.sh`) is the refresh interval xbar/SwiftBar
 polls at. Rename the file (e.g. `tt.30s.sh`) to change it.
